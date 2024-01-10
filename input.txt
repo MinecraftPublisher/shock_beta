@@ -1,0 +1,3 @@
+return s;
+let s = lambda(\x. (x x));
+let x = iota(010101011);

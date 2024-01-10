@@ -1,0 +1,112 @@
+%prefix "shock"
+%value "char*"
+
+%source {
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+
+typedef char* string;
+string concatPart(string s1, string s2) {
+    if(s1 == NULL) return s2;
+    if(s2 == NULL) return s1;
+    if(strlen(s1) == 0) return s2;
+    if(strlen(s2) == 0) return s1;
+    string result = malloc(strlen(s1) + strlen(s2) + 1);
+    if(result == 0) exit(9);
+
+    strcpy(result, s1);
+    strcat(result, s2);
+    return result;
+}
+
+#include <stdarg.h>
+
+string concatAll(int count, ...) {
+   va_list args;
+   va_start(args, count);
+
+   string result = va_arg(args, string);
+   for (int i = 1; i < count; ++i) {
+       result = concatPart(result, va_arg(args, string));
+   }
+
+   va_end(args);
+   return result;
+}
+
+string concatC(string s1, char s2) {
+    int size = strlen(s1) + 2;
+    string result = malloc(size);
+    if(result == 0) exit(9);
+
+    strcpy(result, s1);
+    result[size - 2] = s2;
+    return result;
+}
+
+string indent(string s1) {
+    string result = "    ";
+    for(int i = 0; i < strlen(s1); i++) {
+        result = concatC(result, s1[i]);
+        if(s1[i] == '\n') result = concatPart(result, "    ");
+    }
+
+    return result;
+}
+
+string itoa(int i) {
+    string result = malloc(sizeof(char) * 1);
+    result[0] = (i % 10) + '0';
+
+    i /= 10;
+    while(i != 0) {
+        string thing = malloc(sizeof(char) * 1);
+        thing[0] = i % 10 + '0';
+
+        result = concatPart(thing, result);
+        i /= 10;
+    }
+
+    return result;
+}
+
+#define auto __auto_type
+}
+
+main <- a:expr { printf("%s", a); } / _
+
+expr <-
+    a:iota { $$ = a; }
+    / a:blc { $$ = a; }
+
+# handle iota notation
+iota <- '$' s:_iota { $$ = concatPart("IOTA_NOTATION:\n", indent(s)); }
+_iota_app <- '0' a:_iota b:_iota { $$ = concatAll(2, "IOTA_APPLY:\n", indent(concatAll(3, a, "\n", b))); }
+_iota_var <- '1' { $$ = "IOTA_CONSTANT"; }
+_iota <-
+    a:_iota_var { $$ = a; }
+    / b:_iota_app { $$ = b; }
+
+blc <- '#' s:_blc { $$ = concatPart("BLC_NOTATION:\n", indent(s)); }
+_blc_lam <- '00' a:_blc { $$ = concatAll(2, "BLC_LAMBDA:\n", indent(a)); }
+_blc_app <- '01' a:_blc b:_blc { $$ = concatAll(2, "BLC_APPLY:\n", indent(concatAll(3, a, "\n", b))); }
+_blc_var <- a:_ones '0' { $$ = concatAll(2, "BLC_VAR ", itoa(a)); }
+_ones <- '1' a:_ones { $$ = a + 1; }
+    / '1' { $$ = 1; }
+_blc <-
+    a:_blc_app { $$ = a; }
+    / a:_blc_var { $$ = a; }
+    / a:_blc_lam { $$ = a; }
+
+# handle whitespace
+_ <- (' ' / '\t' / '\r\n' / '\n' / '\r')+
+
+%%
+
+int main() {
+    shock_context_t *ctx = shock_create(NULL);
+    while (shock_parse(ctx, NULL));
+    shock_destroy(ctx);
+    return 0;
+}

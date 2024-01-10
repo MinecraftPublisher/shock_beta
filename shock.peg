@@ -1,0 +1,86 @@
+%prefix "shock"
+
+%value "TREE_VALUE*"
+
+main <- (a:_main) { $$ = a; PRINT_VALUE(a); }
+_main <- a:return _ b:more { $$ = make("_main", b, a); }
+more <- b:more _ a:variable  { $$ = make("var_terms", a, b); } /
+    a:variable { $$ = a; } /
+    (_ / '') { $$ = CREATE_NULL(); }
+
+return <- 'return ' _ a:expr _ ';' { $$ = CREATE_NODE("return", a); } _ comment *
+
+variable <- ( 'let' _ n:name _ '=' _ e:expr ';' ) {
+    $$ = make("variable", n, e); } _ comment *
+
+expr <- (a:lambda / a:iota / a:blc / a:b_app / a:p_app / a:varname) {
+    $$ = CREATE_NODE("expr", a); }
+
+comment <- '#' _ [^\n]*
+
+# variable name
+varname <- a:name { $$ = CREATE_NODE("variable_call", a); }
+
+lambda <- 'lambda(' _ a:_lambda _ ')' { $$ = CREATE_NODE("lambda_expression", a); }
+_lambda <- (a:_lam_abstract / a:_lam_apply / a:_lam_variable) { $$ = a; }
+_lam_abstract <- '\\' n:name '.' _ e:_lambda { $$ = make("lambda_function", n, e); }
+_lam_apply <- '(' _ a:_lambda _ b:_lambda _ ')' { $$ = make("lambda_application", a, b); }
+_lam_variable <- n:name { $$ = CREATE_NODE("lambda_variable", n); }
+
+b_app <- '[' _ a:expr _ (',' / '') _ b:expr _ ']' { $$ = make("application", a, b); }
+p_app <- a:expr _ '(' _ b:expr _ ')' { $$ = make("application", a, b); }
+
+# handle iota combinator notation
+iota <- 'iota(' s:_iota ')' {
+    $$ = CREATE_NODE("iota", s); }
+
+_iota_app <- '0' a:_iota b:_iota {
+    $$ = make("iota_apply", a, b); }
+
+_iota_var <- '1' {
+    $$ = make("iota_const", text("iota_const"), CREATE_NULL()); }
+
+_iota <- (a:_iota_var / a:_iota_app) {
+    $$ = a; }
+
+# handle binary lambda calculus notation
+blc <- 'blc(' s:_blc ')' {
+    $$ = CREATE_NODE("blc", s); }
+
+_blc_lam <- '00' a:_blc {
+    $$ = CREATE_NODE("blc_lambda", a); }
+
+_blc_app <- '01' a:_blc b:_blc {
+    $$ = make("blc_app", a, b); }
+
+_blc_var <- a:_ones '0' {
+    $$ = CREATE_NODE("blc_var", a); }
+
+_ones <- '1' a:_ones {
+        $$ = number(1 + a->value->number); }
+    / '1' {
+        $$ = number(1); }
+
+_blc <-
+    (a:_blc_app / a:_blc_var / a:_blc_lam) {
+        $$ = a; }
+
+# handle whitespace
+name <- [a-zA-Z] [a-zA-Z0-9]* {
+    #pragma clang diagnostic ignored "-Wincompatible-pointer-types-discards-qualifiers"
+    $$ = CREATE_NODE("name", text($0)); }
+_ <- (' ' / '\t' / '\n')*
+
+%%
+
+int main() {
+    shock_context_t *ctx = shock_create(NULL);
+    TREE_VALUE** ret = malloc(sizeof(TREE_VALUE*));
+
+    if(shock_parse(ctx, ret)) {
+        PRINT_VALUE(*ret);
+    }
+
+    shock_destroy(ctx);
+    return 0;
+}
